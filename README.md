@@ -6,7 +6,7 @@
 
 ## 快速重點
 - 每筆訂單都透過 `VaultFactory` 生成一個專屬 Vault 地址，觀眾只需匯款至該地址。
-- 入帳金額需 **≥ 訂單金額 + 0.5 USDT** 才會被標記為成功（狀態 `PENDING`），OBS/TTS 可依此播報。
+- 入帳金額需 **≥ 訂單金額** 才會被標記為成功（狀態 `PENDING`），0.5 USDT 手續費會從該筆金額內扣除。
 - `sweep()` 會將固定 0.5 USDT 匯給平台 (`feeTreasury`)，餘額匯給實況主金庫 (`treasury`)。
 - 訂單超過 10 分鐘未收到足額款項則自動標記 `EXPIRED`；逾時入帳會被忽略。
 - Factory 只需部署一次；新增實況主只要換後端設定中的收款/抽成地址即可。
@@ -71,8 +71,8 @@ CREATED  --(入帳達標)-->  PENDING  --(sweep 成功)-->  SWEPT
    |                              
    └--(逾期)----------------------------------> EXPIRED
 ```
-入帳金額 ≥ 預期 + 0.5 → `PENDING`（視為抖內成功、觸發播報）。
-入帳不足 → `UNDERPAID`（可提醒補款）。
+入帳金額 ≥ 預期金額 → `PENDING`（視為抖內成功、觸發播報，並從中扣除 0.5 USDT 手續費）。
+入帳不足 → `UNDERPAID`（可提醒補款或退款）。
 逾期未付或補款 → `EXPIRED`。
 
 ---
@@ -130,7 +130,7 @@ DATABASE_URL="file:./dev.db"
    回傳 JSON：包含 `orderId`、`vaultAddress`、`payment.token/to/value` 等資訊。
 
 5. **觀眾匯款**
-   - 金額 ≥ `amount + 0.5` USDT；可直接喚起錢包或使用 `scripts/sendUsdt.js`。
+   - 建議金額 = 訂單金額（系統會自動在 sweep 時扣除 0.5 USDT）。若觀眾多匯，餘額同樣會由 sweep 匯給實況主。
 
 6. **查詢訂單**
    ```bash
@@ -158,4 +158,3 @@ DATABASE_URL="file:./dev.db"
 3. **如何服務多個實況主？** `POST /api/orders` 時換成實況主自己的 `owner/treasury/feeTreasury`（可透過 `.env` 或 API 參數）。
 4. **逾時匯款怎麼辦？** 後端會記錄但不變更狀態，保留給營運端決定是否退款或補開訂單。
 5. **如何避免伺服器保存私鑰？** 導入自建簽名服務或雲端 KMS，讓私鑰只存在安全環境；觀眾從來不會觸碰私鑰。
-

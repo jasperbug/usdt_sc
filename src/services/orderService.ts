@@ -39,7 +39,7 @@ export class OrderService {
         vaultAddress: predictedVault,
         expectedAmount: amountWei,
         feeAmount: feeAmountWei,
-        minimumRequired: amountWei + feeAmountWei,
+        minimumRequired: amountWei,
         status: "CREATED",
         nickname: input.nickname ?? null,
         message: input.message ?? null,
