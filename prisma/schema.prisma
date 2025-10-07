@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum DonationStatus {
+  CREATED
+  PENDING
+  UNDERPAID
+  OVERPAID
+  SWEPT
+  EXPIRED
+}
+
+model Donation {
+  id            String          @id @default(cuid())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  orderId       String          @unique
+  vaultAddress  String          @unique
+  expectedAmount BigInt
+  actualAmount  BigInt?
+  feeAmount     BigInt
+  minimumRequired BigInt
+  status        DonationStatus
+  nickname      String?
+  message       String?
+  depositTx     String?
+  sweepTx       String?
+  expiresAt     DateTime
+  chainId       Int
+}
