@@ -107,7 +107,7 @@ DATABASE_URL="file:./dev.db"
 > 若換新實況主，只需更新 `VAULT_OWNER`、`TREASURY_ADDRESS`、`FEE_TREASURY_ADDRESS`；Factory 無需重部署。
 
 ### Ankr 使用說明
-- **Pay-as-you-go** 起跳 10 USD 就能啟用，對應 BSC Premium Endpoint 的基礎費率為 $0.0005 / 1,000 RPC；換算每筆抖內（3 次 RPC 內）成本不到 $0.000002。
+- **Pay-as-you-go** 起跳 10 USD 就能啟用
 - 建議先設定 `BSC_RPC_URL` 使用 HTTPS endpoint。等到帳號開通 WSS 後再回填 `BSC_WS_URL`，即可改為事件訂閱。
 - 若啟用 IP 白名單，記得將正式環境的 Public IP 加入 Ankr Dashboard，否則請求會得到 403。
 - 運營期間可搭配 `LOG_MAX_BLOCK_SPAN` / `LOG_MAX_ADDRESS_BATCH` 動態調整輪詢大小，或改由 WSS 推播降低 RPC 壓力。
