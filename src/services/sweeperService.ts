@@ -6,6 +6,7 @@ import { orderService } from "./orderService";
 
 export class SweeperService {
   private interval: NodeJS.Timeout | null = null;
+  private isRunning = false;
 
   start() {
     if (this.interval) return;
@@ -21,34 +22,45 @@ export class SweeperService {
   }
 
   private async sweepPending() {
-    const pendingOrders = await prisma.donation.findMany({
-      where: { status: "PENDING" },
-    });
+    if (this.isRunning) {
+      logger.debug("Sweep already running; skipping this tick");
+      return;
+    }
 
-    for (const order of pendingOrders) {
-      try {
-        const balance = await usdtContract.balanceOf(order.vaultAddress);
-        if (balance < feeAmountWei) {
-          logger.debug({ orderId: order.orderId, balance: balance.toString() }, "Vault balance too low, skipping sweep");
-          continue;
+    this.isRunning = true;
+
+    try {
+      const pendingOrders = await prisma.donation.findMany({
+        where: { status: "PENDING" },
+      });
+
+      for (const order of pendingOrders) {
+        try {
+          const balance = await usdtContract.balanceOf(order.vaultAddress);
+          if (balance < feeAmountWei) {
+            logger.debug({ orderId: order.orderId, balance: balance.toString() }, "Vault balance too low, skipping sweep");
+            continue;
+          }
+
+          const vault = getVaultContract(order.vaultAddress);
+          const tx = await vault.sweep(appConfig.usdtAddress);
+          logger.info({ orderId: order.orderId, txHash: tx.hash }, "Sweep transaction sent");
+          const receipt = await tx.wait();
+          const txHash = receipt?.hash ?? tx.hash;
+
+          if (!receipt) {
+            logger.warn({ orderId: order.orderId, txHash }, "Sweep receipt not yet available");
+            continue;
+          }
+
+          await orderService.markSwept(order.orderId, txHash);
+          logger.info({ orderId: order.orderId, blockNumber: receipt.blockNumber, txHash }, "Order swept successfully");
+        } catch (error) {
+          logger.error({ err: error, orderId: order.orderId }, "Failed to sweep vault");
         }
-
-        const vault = getVaultContract(order.vaultAddress);
-        const tx = await vault.sweep(appConfig.usdtAddress);
-        logger.info({ orderId: order.orderId, txHash: tx.hash }, "Sweep transaction sent");
-        const receipt = await tx.wait();
-        const txHash = receipt?.hash ?? tx.hash;
-
-        if (!receipt) {
-          logger.warn({ orderId: order.orderId, txHash }, "Sweep receipt not yet available");
-          continue;
-        }
-
-        await orderService.markSwept(order.orderId, txHash);
-        logger.info({ orderId: order.orderId, blockNumber: receipt.blockNumber, txHash }, "Order swept successfully");
-      } catch (error) {
-        logger.error({ err: error, orderId: order.orderId }, "Failed to sweep vault");
       }
+    } finally {
+      this.isRunning = false;
     }
   }
 }

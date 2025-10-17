@@ -10,6 +10,7 @@
 - `sweep()` 會將固定 0.5 USDT 匯給平台 (`feeTreasury`)，餘額匯給實況主金庫 (`treasury`)。
 - 訂單超過 10 分鐘未收到足額款項則自動標記 `EXPIRED`；逾時入帳會被忽略。
 - Factory 只需部署一次；新增實況主只要換後端設定中的收款/抽成地址即可。
+- 推薦使用 **Ankr Premium/Pay-as-you-go RPC**（已於預設程式碼整合）。只需在 `.env` 更新 HTTP endpoint；若之後開通 WSS，可選填 `BSC_WS_URL` 取得更即時的監控能力。
 
 ---
 
@@ -56,7 +57,7 @@ FEE_AMOUNT=0.5 FEE_DECIMALS=18 \
 - `server.ts`：Express 主程式。啟動時：
   - 掛載 API：`POST /api/orders` 建立訂單、`GET /api/orders/:orderId` 查詢狀態。
   - 啟動三個服務：
-    1. `DepositMonitor`：輪詢 USDT Transfer(to=vault) → 標記 `PENDING` / `UNDERPAID`。
+    1. `DepositMonitor`：透過 RPC 拉取 USDT Transfer (to=vault) → 標記 `PENDING` / `UNDERPAID`。預設走 `.env` 的 `BSC_RPC_URL`；若填入 `BSC_WS_URL`，可在後續升級為事件訂閱。
     2. `SweeperService`：定期呼叫 `vault.sweep(USDT)` → 更新 `SWEPT`。
     3. `ExpiryService`：每 30 秒將 `CREATED/UNDERPAID` 且逾期 >10 分鐘的訂單標記 `EXPIRED`。
 - `services/orderService.ts`：封裝訂單建立與狀態轉換邏輯。
@@ -81,7 +82,9 @@ CREATED  --(入帳達標)-->  PENDING  --(sweep 成功)-->  SWEPT
 
 ```ini
 # 鏈路與錢包設定
-BSC_RPC_URL=https://bsc-dataseed.binance.org/
+BSC_RPC_URL=https://rpc.ankr.com/bsc/<YOUR_KEY>
+# 若已開通 WSS 權限可選填，否則留空即可
+# BSC_WS_URL=wss://rpc.ankr.com/bsc_ws/<YOUR_KEY>
 DEPLOYER_PRIVATE_KEY=0x...        # 必須是 Vault Owner 熱錢包的私鑰（觀眾絕不能填）
 FACTORY_ADDRESS=0x62648C5693dE5B04Ff78b39E2ae1eccc405F5334
 USDT_ADDRESS=0x55d398326f99059fF775485246999027B3197955
@@ -95,9 +98,19 @@ ORDER_EXPIRY_MINUTES=10
 POLL_INTERVAL_MS=5000
 SWEEP_INTERVAL_MS=30000
 CHAIN_ID=56
+LOG_MAX_BLOCK_SPAN=2000
+LOG_MAX_ADDRESS_BATCH=50
+LOG_RATE_LIMIT_INITIAL_BACKOFF_MS=2000
+LOG_RATE_LIMIT_MAX_BACKOFF_MS=60000
 DATABASE_URL="file:./dev.db"
 ```
 > 若換新實況主，只需更新 `VAULT_OWNER`、`TREASURY_ADDRESS`、`FEE_TREASURY_ADDRESS`；Factory 無需重部署。
+
+### Ankr 使用說明
+- **Pay-as-you-go** 起跳 10 USD 就能啟用，對應 BSC Premium Endpoint 的基礎費率為 $0.0005 / 1,000 RPC；換算每筆抖內（3 次 RPC 內）成本不到 $0.000002。
+- 建議先設定 `BSC_RPC_URL` 使用 HTTPS endpoint。等到帳號開通 WSS 後再回填 `BSC_WS_URL`，即可改為事件訂閱。
+- 若啟用 IP 白名單，記得將正式環境的 Public IP 加入 Ankr Dashboard，否則請求會得到 403。
+- 運營期間可搭配 `LOG_MAX_BLOCK_SPAN` / `LOG_MAX_ADDRESS_BATCH` 動態調整輪詢大小，或改由 WSS 推播降低 RPC 壓力。
 
 ---
 
@@ -142,6 +155,20 @@ DATABASE_URL="file:./dev.db"
 
 7. **Sweep 分帳**
    - 由排程或手動呼叫 `sweepVault.js`；成功後狀態轉為 `SWEPT`，並記錄交易哈希。
+   - 若遇到 RPC 限流導致狀態無法自動更新，可使用：
+     ```bash
+     VAULT_ADDRESS=<vault>
+     USDT_ADDRESS=<usdt>
+     npx hardhat run scripts/sweepVault.js --network bsc
+     ```
+     手動完成分帳後，`GET /api/orders/:id` 會顯示 `SWEPT` 與 `sweepTx`。
+
+---
+
+## 運營與監控建議
+- **調整輪詢參數**：`LOG_MAX_BLOCK_SPAN` 和 `LOG_MAX_ADDRESS_BATCH` 可依當前活躍訂單數與 RPC 配額調整；當發生 429 或 -32005 錯誤時，可先降低這兩個值。
+- **升級 WebSocket**：在 `.env` 填入 `BSC_WS_URL` 後，可將 `DepositMonitor` 改為 `wsProvider.on('logs')` 監聽 Transfer 事件，達到秒級播報。
+- **對帳流程**：建議每日/每周使用 Ankr Advanced APIs（`ankr_getTransfersByAddress`）或 Covalent 等服務做補帳，確保沒有漏掉的捐款。
 
 ---
 
